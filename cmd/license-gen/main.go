@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +14,8 @@ import (
 	"device-secret/internal/fingerprint"
 	"device-secret/internal/license"
 )
+
+var validKidRE = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 
 func main() {
 	requestPath := flag.String("request", "", "request file path (required)")
@@ -23,6 +26,14 @@ func main() {
 	kid := flag.String("kid", "", "key ID for rotation (optional)")
 	output := flag.String("o", "", "output path (default: stdout)")
 	flag.Parse()
+
+	// Validate kid format if provided
+	if *kid != "" {
+		if !validKidRE.MatchString(*kid) {
+			fmt.Fprintf(os.Stderr, "license-gen: invalid kid %q: must match %s (1-64 chars: letters, digits, hyphens, underscores)\n", *kid, validKidRE.String())
+			os.Exit(1)
+		}
+	}
 
 	if *requestPath == "" || *keyPath == "" || *expires == "" {
 		fmt.Fprintf(os.Stderr, "usage: license-gen -request <path> -key <path> -expires <time>\n")
