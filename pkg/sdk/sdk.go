@@ -57,10 +57,23 @@ type SDK struct {
 // VerifyResult is the outcome of a verification, including grace period
 // status and, on success, the time remaining until expiry.
 type VerifyResult struct {
+	// Status is one of StatusValid, StatusGracePeriod, StatusExpired, or
+	// StatusInvalid.
 	Status  grace.Status
 	Message string
 	Remain  time.Duration
 }
+
+// Status is an alias for grace.Status so callers can reference the constants
+// without importing internal packages.
+type Status = grace.Status
+
+const (
+	StatusValid       = grace.StatusValid
+	StatusGracePeriod = grace.StatusGracePeriod
+	StatusExpired     = grace.StatusExpired
+	StatusInvalid     = grace.StatusInvalid
+)
 
 // LicenseInfo exposes the verified license payload to the application.
 // It is nil when the license could not be verified.
