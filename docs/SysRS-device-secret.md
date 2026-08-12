@@ -78,7 +78,7 @@
 | **防重放/克隆** | License 绑定唯一设备指纹哈希，拷贝到其他设备指纹不匹配则拒绝 |
 | **私钥安全** | Ed25519 私钥仅存在于签发机，不分发到设备端 |
 | **公钥保护** | 公钥编译进 SDK 或随应用镜像分发，泄露不影响签名伪造 |
-| **密钥轮换** | License 预留 `kid`（Key ID）字段，支持未来平滑切换密钥对 |
+| **密钥轮换** | License 预留 `kid`（Key ID）字段。公钥文件按 `<kid>.pem` 命名放在源码 `keys/` 目录，通过 `//go:embed` 编译嵌入。更换签发密钥时，新 License 带新 `kid` 用新私钥签名，旧 License 的 `kid` 指向旧公钥持续有效。`default.pem` 为无 `kid` 的旧 License 提供向后兼容。`kid` 格式：`^[a-zA-Z0-9_-]{1,64}$` |
 
 ## 5. 非功能需求
 
@@ -151,6 +151,9 @@ SDK.Verify() → Valid / GracePeriod / Expired / Invalid
 
 ```
 device-secret/
+├── keys/                        # 公钥文件（编译时嵌入）
+│   ├── default.pem              #   当前活跃签发公钥（匹配无 kid 旧 License）
+│   └── <kid>.pem                #   历史/轮换公钥（kid 匹配）
 ├── cmd/
 │   ├── fingerprint/
 │   │   └── main.go              # 指纹采集 CLI 入口
@@ -199,8 +202,14 @@ pkg/sdk          ──▶ internal/fingerprint + internal/license + internal/gr
 ### 6.5 SDK API 概览
 
 ```go
+//go:embed keys/*.pem
+var keyFS embed.FS
+
 // 初始化
-sdk, err := devicesecret.Init(Config{LicensePath: "/license/license.bin"})
+sdk, err := devicesecret.Init(Config{
+    LicensePath: "/license/license",
+    KeyFS:       keyFS,
+})
 
 // 校验
 result := sdk.Verify()
@@ -266,7 +275,7 @@ info := sdk.LicenseInfo()  // 有效期、功能模块等
 }
 ```
 
-- `kid`：密钥 ID，支持密钥轮换
+- `kid`：密钥 ID，SDK 据此选择对应公钥验签。格式 `^[a-zA-Z0-9_-]{1,64}$`，文件命名 `<kid>.pem`
 - `features`：`null` 表示全功能，未来扩展为 `["module_a"]`
 - 最终文件：`base64(紧凑JSON).base64(Ed25519签名)`
 

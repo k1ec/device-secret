@@ -89,7 +89,12 @@ make clean
 # 公钥: public.pem
 ```
 
-**私钥**妥善保管在签发机上，**公钥**嵌入目标应用。
+**私钥**妥善保管在签发机上，**公钥**以 `<kid>.pem` 命名放入源码 `keys/` 目录，编译时嵌入应用。
+
+公钥文件命名规范：
+- `default.pem` — 当前活跃签发密钥，匹配无 `kid` 的旧 License
+- `<kid>.pem` — 特定 kid 的公钥（如 `2026-primary.pem`）
+- 文件名去掉 `.pem` 即为 `kid` 值；`kid` 格式：`^[a-zA-Z0-9_-]{1,64}$`
 
 ### 2. 采集设备指纹
 
@@ -144,19 +149,23 @@ make clean
 package main
 
 import (
-    "os"
+    "embed"
+    "log"
+    "time"
+
     "device-secret/pkg/sdk"
 )
 
-func main() {
-    pubKey, _ := os.ReadFile("public.pem")
+//go:embed keys/*.pem
+var keyFS embed.FS
 
+func main() {
     lic, err := sdk.Init(sdk.Config{
         LicensePath: "/etc/myapp/license",
-        PublicKey:   pubKey,
+        KeyFS:       keyFS,
     })
     if err != nil {
-        panic(err)
+        log.Fatalf("sdk init failed: %v", err)
     }
 
     result := lic.Verify()
@@ -170,6 +179,17 @@ func main() {
     case sdk.StatusInvalid:
         // 签名无效，阻断
     }
+
+    // 运行时周期性校验
+    go func() {
+        ticker := time.NewTicker(24 * time.Hour)
+        defer ticker.Stop()
+        for range ticker.C {
+            if result := lic.Verify(); result.Status != sdk.StatusValid {
+                log.Printf("license check: %s", result.Message)
+            }
+        }
+    }()
 }
 ```
 
@@ -278,7 +298,7 @@ base64url(JSON载荷).base64url(Ed25519签名)
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `version` | int | 协议版本（当前为 `1`） |
-| `kid` | string | 密钥 ID，支持密钥轮换 |
+| `kid` | string | 密钥 ID，格式 `^[a-zA-Z0-9_-]{1,64}$`，SDK 据此选择验签公钥 |
 | `device_hash` | string | 设备指纹的 `sha256:...` 哈希值 |
 | `issued_at` | RFC3339 | 签发时间 |
 | `expires_at` | RFC3339 | 过期时间 |
@@ -302,7 +322,7 @@ base64url(JSON载荷).base64url(Ed25519签名)
 - **静态编译**——所有构建均设 `CGO_ENABLED=0`
 - **SDK 永不 panic**——所有公开函数通过 error 返回错误
 - **离线运行**——校验过程不发起任何网络请求
-- **密钥轮换**——`kid` 字段支持更换签发密钥而不影响已签发的 License
+- **密钥轮换**——`kid` 字段 + 多公钥 embed 机制，更换签发密钥后旧 License 持续有效
 
 ## 安全性
 
