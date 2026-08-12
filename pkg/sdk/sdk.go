@@ -84,12 +84,21 @@ type LicenseInfo struct {
 	Features   []string
 }
 
-// Init parses the public key, loads and signature-verifies the license file,
-// and prepares the grace period tracker. It never panics.
+// Init loads public keys, reads and verifies the license file, and prepares
+// the grace period tracker. It never panics.
 //
-// A license with an invalid signature or format does not fail Init: the SDK
-// is returned and Verify() reports StatusInvalid. Init only fails on missing
-// license file, invalid public key, or an unwritable marker directory.
+// In single-key mode (Config.PublicKey set), an invalid license signature or
+// format does not fail Init: the SDK is returned and Verify() reports
+// StatusInvalid. Init only fails on a missing license file, invalid public
+// key, or an unwritable marker directory.
+//
+// In multi-key mode (Config.KeyFS set), Init performs additional validation:
+// scanning the key directory, peeking at the license kid, and selecting the
+// matching public key. Init fails on KeyFS load errors, an unparseable
+// license body, an unknown kid, or a missing default key for kid-less
+// licenses. After key selection, signature verification still soft-lands (the
+// SDK is returned and Verify() reports StatusInvalid), consistent with
+// single-key mode.
 func Init(cfg Config) (*SDK, error) {
 	applyDefaults(&cfg)
 
