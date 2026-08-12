@@ -4,9 +4,11 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"device-secret/internal/fingerprint"
@@ -181,7 +183,7 @@ func TestInit_DefaultGraceDuration(t *testing.T) {
 	licData := makeLicense(t, priv, "sha256:test", time.Now().Add(24*time.Hour))
 	licPath := writeLicense(t, dir, licData)
 
-	// GraceDuration omitted — Init must default to 7 days.
+	// GraceDuration omitted — Init must default to 30 days.
 	sdk, err := Init(Config{
 		LicensePath: licPath,
 		PublicKey:   pubPEM,
@@ -190,17 +192,17 @@ func TestInit_DefaultGraceDuration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
-	if got := sdk.tracker.GraceDuration; got != 7*24*time.Hour {
-		t.Errorf("GraceDuration = %v, want 168h (7 days)", got)
+	if got := sdk.tracker.GraceDuration; got != 30*24*time.Hour {
+		t.Errorf("GraceDuration = %v, want 720h (30 days)", got)
 	}
 }
 
 func TestApplyDefaults(t *testing.T) {
-	// Zero Config gets the 7-day grace period and default marker path.
+	// Zero Config gets the 30-day grace period and default marker path.
 	var cfg Config
 	applyDefaults(&cfg)
-	if cfg.GraceDuration != 7*24*time.Hour {
-		t.Errorf("GraceDuration = %v, want 168h (7 days)", cfg.GraceDuration)
+	if cfg.GraceDuration != 30*24*time.Hour {
+		t.Errorf("GraceDuration = %v, want 720h (30 days)", cfg.GraceDuration)
 	}
 	if cfg.MarkerPath != "/var/lib/device-secret/.grace_start" {
 		t.Errorf("MarkerPath = %q, want /var/lib/device-secret/.grace_start", cfg.MarkerPath)
@@ -305,5 +307,272 @@ func TestVerify_GracePeriodLifecycle(t *testing.T) {
 	r = sdk.Verify()
 	if r.Status != grace.StatusExpired {
 		t.Errorf("second Verify() = %v (%s), want Expired", r.Status, r.Message)
+	}
+}
+
+// makeLicenseWithKID creates a signed license with an explicit kid.
+func makeLicenseWithKID(t *testing.T, priv ed25519.PrivateKey, hash string, expiresAt time.Time, kid string) []byte {
+	t.Helper()
+	data, err := license.SignLicense(license.LicensePayload{
+		Version:    1,
+		KID:        kid,
+		DeviceHash: hash,
+		IssuedAt:   time.Now().Truncate(time.Second),
+		ExpiresAt:  expiresAt,
+	}, priv)
+	if err != nil {
+		t.Fatalf("SignLicense error: %v", err)
+	}
+	return data
+}
+
+// keyFSBuilder helps construct an fstest.MapFS from kid→PEM mappings.
+func keyFSBuilder(t *testing.T, kidsToKeys map[string][]byte) fs.FS {
+	t.Helper()
+	m := make(fstest.MapFS)
+	for kid, pemBytes := range kidsToKeys {
+		filename := kid + ".pem"
+		if kid == "" {
+			filename = "default.pem"
+		}
+		m[filename] = &fstest.MapFile{Data: pemBytes}
+	}
+	return m
+}
+
+// genKeyPair returns (priv, pubPEM).
+func genKeyPair(t *testing.T) (ed25519.PrivateKey, []byte) {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey error: %v", err)
+	}
+	pubPEM := pem.EncodeToMemory(&pem.Block{Type: "ED25519 PUBLIC KEY", Bytes: pub})
+	return priv, pubPEM
+}
+
+func TestInit_KeyFSSelectsByKid(t *testing.T) {
+	dir := t.TempDir()
+	priv, pubPEM := genKeyPair(t)
+	licData := makeLicenseWithKID(t, priv, "sha256:test", time.Now().Add(365*24*time.Hour), "2026-v1")
+	licPath := writeLicense(t, dir, licData)
+
+	keyFS := keyFSBuilder(t, map[string][]byte{
+		"2026-v1": pubPEM,
+	})
+
+	sdkInst, err := Init(Config{
+		LicensePath:   licPath,
+		KeyFS:         keyFS,
+		MarkerPath:    filepath.Join(dir, ".grace_start"),
+		GraceDuration: testGraceDuration,
+	})
+	if err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	if !sdkInst.initPassed {
+		t.Error("initPassed should be true when kid matches correct key")
+	}
+	info := sdkInst.LicenseInfo()
+	if info == nil {
+		t.Fatal("LicenseInfo() should not be nil")
+	}
+	if info.KID != "2026-v1" {
+		t.Errorf("LicenseInfo.KID = %q, want %q", info.KID, "2026-v1")
+	}
+}
+
+func TestInit_KeyFSDefaultFallback(t *testing.T) {
+	dir := t.TempDir()
+	priv, pubPEM := genKeyPair(t)
+	// License WITHOUT kid — must match default.pem
+	licData := makeLicense(t, priv, "sha256:test", time.Now().Add(365*24*time.Hour))
+	licPath := writeLicense(t, dir, licData)
+
+	keyFS := keyFSBuilder(t, map[string][]byte{
+		"": pubPEM, // default.pem
+	})
+
+	sdkInst, err := Init(Config{
+		LicensePath:   licPath,
+		KeyFS:         keyFS,
+		MarkerPath:    filepath.Join(dir, ".grace_start"),
+		GraceDuration: testGraceDuration,
+	})
+	if err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	if !sdkInst.initPassed {
+		t.Error("initPassed should be true when default key matches no-kid license")
+	}
+}
+
+func TestInit_KeyFSUnknownKid(t *testing.T) {
+	dir := t.TempDir()
+	priv, pubPEM := genKeyPair(t)
+	licData := makeLicenseWithKID(t, priv, "sha256:test", time.Now().Add(365*24*time.Hour), "v9-unknown")
+	licPath := writeLicense(t, dir, licData)
+
+	keyFS := keyFSBuilder(t, map[string][]byte{
+		"":        pubPEM, // only default, no v9-unknown
+		"2026-v1": pubPEM,
+	})
+
+	_, err := Init(Config{
+		LicensePath:   licPath,
+		KeyFS:         keyFS,
+		MarkerPath:    filepath.Join(dir, ".grace_start"),
+		GraceDuration: testGraceDuration,
+	})
+	if err == nil {
+		t.Fatal("Init() expected error for unknown kid")
+	}
+}
+
+func TestInit_KeyFSNoDefaultForOldLicense(t *testing.T) {
+	dir := t.TempDir()
+	priv, pubPEM := genKeyPair(t)
+	// License WITHOUT kid, and no default.pem in KeyFS
+	licData := makeLicense(t, priv, "sha256:test", time.Now().Add(365*24*time.Hour))
+	licPath := writeLicense(t, dir, licData)
+
+	keyFS := keyFSBuilder(t, map[string][]byte{
+		"2026-v1": pubPEM, // only named keys, no default
+	})
+
+	_, err := Init(Config{
+		LicensePath:   licPath,
+		KeyFS:         keyFS,
+		MarkerPath:    filepath.Join(dir, ".grace_start"),
+		GraceDuration: testGraceDuration,
+	})
+	if err == nil {
+		t.Fatal("Init() expected error when license has no kid and no default key")
+	}
+}
+
+func TestInit_KeyFSWrongKeyForKid(t *testing.T) {
+	dir := t.TempDir()
+	priv1, _ := genKeyPair(t)
+	_, pubPEM2 := genKeyPair(t) // different key pair!
+	licData := makeLicenseWithKID(t, priv1, "sha256:test", time.Now().Add(365*24*time.Hour), "2026-v1")
+	licPath := writeLicense(t, dir, licData)
+
+	keyFS := keyFSBuilder(t, map[string][]byte{
+		"2026-v1": pubPEM2, // wrong key for this license
+	})
+
+	sdkInst, err := Init(Config{
+		LicensePath:   licPath,
+		KeyFS:         keyFS,
+		MarkerPath:    filepath.Join(dir, ".grace_start"),
+		GraceDuration: testGraceDuration,
+	})
+	if err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	if sdkInst.initPassed {
+		t.Error("initPassed should be false when kid matches but key is wrong")
+	}
+}
+
+func TestInit_PublicKeyBackwardCompat(t *testing.T) {
+	dir := t.TempDir()
+	priv, pubPEM := genKeyPair(t)
+	licData := makeLicense(t, priv, "sha256:test", time.Now().Add(365*24*time.Hour))
+	licPath := writeLicense(t, dir, licData)
+
+	// Both PublicKey and KeyFS set — PublicKey takes precedence
+	_, pubPEM2 := genKeyPair(t)
+	keyFS := keyFSBuilder(t, map[string][]byte{
+		"": pubPEM2, // different key — should be ignored
+	})
+
+	sdkInst, err := Init(Config{
+		LicensePath:   licPath,
+		PublicKey:     pubPEM, // this one wins
+		KeyFS:         keyFS,  // ignored
+		MarkerPath:    filepath.Join(dir, ".grace_start"),
+		GraceDuration: testGraceDuration,
+	})
+	if err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	if !sdkInst.initPassed {
+		t.Error("initPassed should be true — PublicKey takes precedence over KeyFS")
+	}
+}
+
+func TestInit_NoPublicKeyNoKeyFS(t *testing.T) {
+	dir := t.TempDir()
+	licPath := filepath.Join(dir, "license.bin")
+	if err := os.WriteFile(licPath, []byte("dummy"), 0o644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	_, err := Init(Config{
+		LicensePath: licPath,
+		// Neither PublicKey nor KeyFS set
+	})
+	if err == nil {
+		t.Fatal("Init() expected error when no public key configured")
+	}
+}
+
+func TestLicenseInfo_IncludesKID(t *testing.T) {
+	dir := t.TempDir()
+	priv, pubPEM := genKeyPair(t)
+	licData := makeLicenseWithKID(t, priv, "sha256:test", time.Now().Add(365*24*time.Hour), "2027-v2")
+	licPath := writeLicense(t, dir, licData)
+
+	keyFS := keyFSBuilder(t, map[string][]byte{
+		"2027-v2": pubPEM,
+	})
+
+	sdkInst, err := Init(Config{
+		LicensePath:   licPath,
+		KeyFS:         keyFS,
+		MarkerPath:    filepath.Join(dir, ".grace_start"),
+		GraceDuration: testGraceDuration,
+	})
+	if err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	info := sdkInst.LicenseInfo()
+	if info == nil {
+		t.Fatal("LicenseInfo() should not be nil")
+	}
+	if info.KID != "2027-v2" {
+		t.Errorf("LicenseInfo.KID = %q, want %q", info.KID, "2027-v2")
+	}
+}
+
+func TestLicenseInfo_KIDEmpty(t *testing.T) {
+	dir := t.TempDir()
+	priv, pubPEM := genKeyPair(t)
+	licData := makeLicense(t, priv, "sha256:test", time.Now().Add(365*24*time.Hour))
+	licPath := writeLicense(t, dir, licData)
+
+	keyFS := keyFSBuilder(t, map[string][]byte{
+		"": pubPEM,
+	})
+
+	sdkInst, err := Init(Config{
+		LicensePath:   licPath,
+		KeyFS:         keyFS,
+		MarkerPath:    filepath.Join(dir, ".grace_start"),
+		GraceDuration: testGraceDuration,
+	})
+	if err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	info := sdkInst.LicenseInfo()
+	if info == nil {
+		t.Fatal("LicenseInfo() should not be nil")
+	}
+	if info.KID != "" {
+		t.Errorf("LicenseInfo.KID = %q, want empty string", info.KID)
 	}
 }

@@ -7,7 +7,9 @@ package sdk
 
 import (
 	"crypto/ed25519"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -29,13 +31,18 @@ type Config struct {
 	// LicensePath is the path of the license file to load and verify.
 	LicensePath string
 	// PublicKey is the PEM-encoded Ed25519 public key used to verify the
-	// license signature.
+	// license signature. When set, single-key mode is used and KeyFS is
+	// ignored (backward compatible).
 	PublicKey []byte
+	// KeyFS is an fs.FS containing *.pem public key files for multi-key
+	// mode. File naming: <kid>.pem, with "default.pem" used for licenses
+	// that have no kid. Typically populated via //go:embed keys/*.pem.
+	KeyFS fs.FS
 	// MarkerPath is where the grace period start time is persisted.
 	// Defaults to /var/lib/device-secret/.grace_start.
 	MarkerPath string
 	// GraceDuration is how long a grace period lasts after a verification
-	// failure. Defaults to 7 days.
+	// failure. Defaults to 30 days.
 	GraceDuration time.Duration
 }
 
@@ -58,6 +65,7 @@ type VerifyResult struct {
 // LicenseInfo exposes the verified license payload to the application.
 // It is nil when the license could not be verified.
 type LicenseInfo struct {
+	KID        string // Key ID from the license payload
 	DeviceHash string
 	ExpiresAt  time.Time
 	Features   []string
@@ -70,15 +78,31 @@ type LicenseInfo struct {
 // is returned and Verify() reports StatusInvalid. Init only fails on missing
 // license file, invalid public key, or an unwritable marker directory.
 func Init(cfg Config) (*SDK, error) {
-	pubKey, err := crypto.ParsePublicKey(cfg.PublicKey)
-	if err != nil {
-		return nil, fmt.Errorf("sdk: invalid public key: %w", err)
-	}
-
 	applyDefaults(&cfg)
 
+	// Resolve public key(s)
+	var pubKey ed25519.PublicKey
+	var pubKeys map[string]ed25519.PublicKey
+
+	if cfg.PublicKey != nil {
+		// Single-key mode (backward compatible) — KeyFS is ignored.
+		var err error
+		pubKey, err = crypto.ParsePublicKey(cfg.PublicKey)
+		if err != nil {
+			return nil, fmt.Errorf("sdk: invalid public key: %w", err)
+		}
+	} else if cfg.KeyFS != nil {
+		// Multi-key mode — load all *.pem files from the embedded FS.
+		var err error
+		pubKeys, err = loadKeys(cfg.KeyFS)
+		if err != nil {
+			return nil, fmt.Errorf("sdk: %w", err)
+		}
+	} else {
+		return nil, errors.New("sdk: no public key configured — set PublicKey or KeyFS")
+	}
+
 	s := &SDK{
-		pubKey: pubKey,
 		tracker: &grace.Tracker{
 			GraceDuration: cfg.GraceDuration,
 			MarkerPath:    cfg.MarkerPath,
@@ -89,6 +113,24 @@ func Init(cfg Config) (*SDK, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sdk: cannot read license file: %w", err)
 	}
+
+	// In multi-key mode, peek at the kid to select the correct public key.
+	if pubKeys != nil {
+		kid, err := license.PeekKID(licData)
+		if err != nil {
+			return nil, fmt.Errorf("sdk: cannot read license kid: %w", err)
+		}
+		var ok bool
+		pubKey, ok = pubKeys[kid]
+		if !ok {
+			if kid == "" {
+				return nil, errors.New("sdk: license has no kid, and no default key configured")
+			}
+			return nil, fmt.Errorf("sdk: unknown kid %q — no matching public key", kid)
+		}
+	}
+
+	s.pubKey = pubKey
 
 	s.payload, err = license.VerifyLicense(licData, pubKey)
 	if err != nil {
@@ -177,6 +219,7 @@ func (s *SDK) LicenseInfo() *LicenseInfo {
 		return nil
 	}
 	return &LicenseInfo{
+		KID:        s.payload.KID,
 		DeviceHash: s.payload.DeviceHash,
 		ExpiresAt:  s.payload.ExpiresAt,
 		Features:   s.payload.Features,
