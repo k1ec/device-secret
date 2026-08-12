@@ -20,7 +20,7 @@ import (
 
 // Defaults applied by Init when the corresponding Config fields are zero.
 const (
-	defaultGraceDuration = 7 * 24 * time.Hour // 7 days
+	defaultGraceDuration = 30 * 24 * time.Hour // 30 days
 	defaultMarkerPath    = "/var/lib/device-secret/.grace_start"
 )
 
