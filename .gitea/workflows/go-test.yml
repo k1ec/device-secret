@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: golang:1.25-bookworm
+      image: golang:1.26-bookworm
 
     steps:
       - name: Check out code
