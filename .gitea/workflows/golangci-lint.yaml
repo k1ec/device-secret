@@ -9,5 +9,5 @@ jobs:
   hello-action:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Trigger ${{ github.event_name }}
+      - run: echo "Trigger ${{ github.event_name }}"
 
