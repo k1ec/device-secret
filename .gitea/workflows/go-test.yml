@@ -11,11 +11,16 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: golang:1.26-bookworm
+      image: node:20-bookworm
 
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+            go-version: '1.25'
 
       - name: Run Unit Test
         run: |
