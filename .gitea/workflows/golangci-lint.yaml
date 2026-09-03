@@ -9,5 +9,5 @@ jobs:
   hello-action:
     runs-on: ubuntu-latest:docker://docker.gitea.com/runner-images:ubuntu-latest
     steps:
-      - run echo "Trigger ${{ github.event_name }}
+      - run: echo "Trigger ${{ github.event_name }}
 
