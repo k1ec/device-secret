@@ -1,0 +1,35 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    # 1. 复杂度与代码量限制
+    - funlen
+    - gocyclo
+    - gocognit
+
+    # 2. 官方标准与静态诊断（必开）
+#    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # 4. 减少团队扯皮与规范代码风格（推荐新增）
+    - misspell
+    - dupword    # 检查重复单词
+  disable:
+
+  settings:
+    funlen:
+      lines: 100      # 单个函数最大行数限制（默认60行）
+      statements: 80 # 单个函数最大语句数量
+      ignore-comments: true
+    gocyclo:
+      min-complexity: 24 # 圈复杂度上限，超过15报错警告（建议值 10-15）
+    gocognit:
+      min-complexity: 24 # 认知复杂度上限
+    cyclop:
+      max-complexity: 15
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
