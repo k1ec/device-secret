@@ -1,0 +1,26 @@
+name: Go Tests
+
+on: push
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Run Unit Test
+    runs-on: ubuntu-latest
+
+    container:
+      image: golang:1.25-bookworm
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Run Unit Test
+        run: |
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Check Coverage Summary
+        run: |
+          go tool cover -func=coverage.out
