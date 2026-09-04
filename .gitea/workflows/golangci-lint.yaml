@@ -9,8 +9,6 @@ jobs:
   golangci-lint:
     name: lint
     runs-on: ubuntu-latest
-    container:
-      image: golang:1.25-bookworm
     steps:
       - name: Check out repository code
         uses: actions/checkout@v6
