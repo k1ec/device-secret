@@ -1,13 +1,26 @@
 name: golangci-lint
 on:
-  - push
+  push:
 
 permissions:
   contents: read
 
 jobs:
   golangci-lint:
+    name: lint
     runs-on: ubuntu-latest
+    container:
+      image: golang:1.25-bookworm
     steps:
-      - run: echo "Trigger ${{ github.event_name }}"
+      - name: Check out repository code
+        uses: actions/checkout@v6
 
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13
