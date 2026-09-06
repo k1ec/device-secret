@@ -16,7 +16,6 @@ linters:
     # 4. 减少团队扯皮与规范代码风格（推荐新增）
     - misspell
     - dupword    # 检查重复单词
-  disable:
 
   settings:
     funlen:

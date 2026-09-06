@@ -1,0 +1,24 @@
+name: build-with-make.yml
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Generate code
+        run: go generate ./...
+
+      - name: build binary
+        run: make
