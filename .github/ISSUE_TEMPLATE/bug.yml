@@ -1,0 +1,96 @@
+name: Bug Report
+description: Report a reproducible software defect / 报告可复现的软件缺陷
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report! 请尽可能提供完整信息，否则问题可能无法得到及时处理。
+
+        **Security issues / 安全漏洞**: do NOT file a public issue. 请通过飞书私下披露: @xuyongchao
+
+        Suggested flow / 建议描述顺序:
+        what happened 现象 → expected 预期 → reproduce 复现步骤 → severity 严重程度 → environment 环境信息
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened / 问题现象
+      description: What actually happened. Include error messages or output verbatim / 实际发生了什么，请原样附上报错信息或输出
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-expected
+    attributes:
+      label: What did you expect to happen / 预期行为
+      description: What should have happened instead / 本应发生什么
+    validations:
+      required: true
+
+  - type: dropdown
+    id: duplicate
+    attributes:
+      label: Duplicate of an existing issue / 是否为重复提交
+      description: Check open and closed issues first / 请先检索已打开和已关闭的 issue
+      options:
+        - "No / 否"
+        - "Yes / 是"
+    validations:
+      required: true
+
+  - type: input
+    id: duplicate-link
+    attributes:
+      label: Original issue link / 原始 issue 链接
+      description: Only if you answered Yes above / 仅当上一项选"是"时填写
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / 复现步骤
+      description: As minimally and precisely as possible / 尽量最小化且精确
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity / 严重程度
+      options:
+        - Critical — production down / 生产不可用
+        - High — major function broken / 主要功能受损
+        - Medium — workaround exists / 可绕过
+        - Low — minor / 轻微
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / 环境信息
+      description: Fill in every line that applies / 按实际情况逐项填写
+      placeholder: |
+        - Station / 现场: 哪个现场?
+        - OS / 操作系统 (`cat /etc/os-release`):
+        - Product version / 产品版本, 关键组件版本:
+        - Config file / 配置文件:
+        - Logs / 日志 (if applicable, 如适用):
+        - Others / 其他:
+    validations:
+      required: true
+
+  - type: textarea
+    id: extras
+    attributes:
+      label: Anything else / 其他补充
+      description: Screenshots, related issues, anything not covered above / 截图、关联 issue 等未覆盖的信息
+    validations:
+      required: false

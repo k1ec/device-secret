@@ -1,0 +1,58 @@
+name: Task
+description: Engineering work that supports the product / 支撑产品的工程任务
+title: "[Task]: "
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for engineering tasks (refactoring, CI, tooling, docs) / 工程类任务（重构、CI、工具链、文档）请使用此模板.
+
+  - type: textarea
+    id: what-to-do
+    attributes:
+      label: What needs to be done / 任务内容
+      description: A concise statement of the work / 简明描述要做什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: why-needed
+    attributes:
+      label: Why is this needed / 背景与价值
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-approach
+    attributes:
+      label: Proposed approach / 实现思路
+      description: Describe the intended implementation, if known / 如已知实现方式请描述
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria / 验收标准
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies / 依赖
+      description: Related issues, services, teams / 关联 issue、服务、团队等
+    validations:
+      required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / 备注
+      description: Additional technical information / 其他技术信息
+    validations:
+      required: false

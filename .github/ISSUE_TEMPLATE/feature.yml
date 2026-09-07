@@ -1,0 +1,58 @@
+name: Enhancement Request
+description: Suggest an enhancement to the project / 提出功能增强建议
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please only use this template for enhancement requests / 请仅将此模板用于功能增强建议.
+        For bugs, use the Bug Report template / 报 Bug 请使用 Bug Report 模板.
+
+  - type: textarea
+    id: what-to-add
+    attributes:
+      label: What would you like to be added / 需求描述
+      description: Use the user-story format below / 请使用下面的用户故事格式
+      placeholder: |
+        As a **[type of user / 用户角色]**,
+        I want **[capability / 功能]**,
+        so that **[business value / 业务价值]**.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why-needed
+    attributes:
+      label: Why is this needed / 背景与价值
+      description: The problem or scenario this solves / 该需求解决的实际问题或场景
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria / 验收标准
+      description: Checkable outcomes / 可勾选的验收结果
+      value: |
+        - [ ]
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies / 依赖
+      description: Related issues, services, teams / 关联 issue、服务、团队等
+    validations:
+      required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / 备注
+      description: Additional technical information / 其他技术信息
+    validations:
+      required: false
